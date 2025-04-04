@@ -1,46 +1,105 @@
-from flask import Flask,jsonify
-from flask_cors import CORS 
 import random
+import os,json
+import firebase_admin
+from flask import Flask,jsonify,request
+from flask_cors import CORS
+from firebase_admin import credentials,firestore
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = Flask(__name__)
-CORS(app) 
+CORS(app)
 
-charadas = [
-    {'id': 1, 'charada': 'O que é, o que é? Anda com os pés na cabeça.', 'resposta': 'Piolho'},
-    {'id': 2, 'charada': 'O que é, o que é? Quanto mais se tira, maior fica.', 'resposta': 'Buraco'},
-    {'id': 3, 'charada': 'O que é, o que é? Tem boca, mas não fala, tem asas, mas não voa.', 'resposta': 'Rio'},
-    {'id': 4, 'charada': 'O que é, o que é? Sobe e desce, mas não sai do lugar.', 'resposta': 'Escada'},
-    {'id': 5, 'charada': 'O que é, o que é? Tem dentes, mas não morde.', 'resposta': 'Alho'},
-    {'id': 6, 'charada': 'O que é, o que é? Corre a casa toda e depois se esconde em um canto.', 'resposta': 'Vassoura'},
-    {'id': 7, 'charada': 'O que é, o que é? Quanto mais se perde, mais se tem.', 'resposta': 'Sono'},
-    {'id': 8, 'charada': 'O que é, o que é? Tem chapéu, mas não tem cabeça, tem boca, mas não fala.', 'resposta': 'Garrafa'},
-    {'id': 9, 'charada': 'O que é, o que é? Voa sem ter asas e chora sem ter olhos.', 'resposta': 'Nuvem'},
-    {'id': 10, 'charada': 'O que é, o que é? Entra na água e não se molha.', 'resposta': 'Sombra'},
-    {'id': 11, 'charada': 'O que é, o que é? Fica cheio de boca para baixo e vazio de boca para cima.', 'resposta': 'Chapéu'},
-    {'id': 12, 'charada': 'O que é, o que é? Tem muitas casas, mas não tem paredes, tem ruas, mas não tem carros, tem montanhas, mas não tem árvores.', 'resposta': 'Mapa'},
-    {'id': 13, 'charada': 'O que é, o que é? Anda, mas não tem pés, corre, mas não tem pernas, e chora, mas não tem olhos.', 'resposta': 'Rio'},
-    {'id': 14, 'charada': 'O que é, o que é? Tem coroa, mas não é rei, tem escamas, mas não é peixe.', 'resposta': 'Abacaxi'},
-    {'id': 15, 'charada': 'O que é, o que é? Quanto mais se seca, mais molhado fica.', 'resposta': 'Toalha'}
-]
+FBKEY=json.loads(os.getenv('CONFIG_FIREBASE'))
+
+cred = credentials.Certificate(FBKEY)
+firebase_admin.initialize_app(cred)
+
+db = firestore.client() #conecta ao db do firebase
 
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def index():
-    return 'Api on'
+    return 'Api on',200
 
+
+# metodo GET
 @app.route('/charadas', methods=['GET'])
-def charadarandom():
-    return jsonify(random.choice(charadas)),200
+def charadaRandom():
+    charadas= []
 
-@app.route('/charadas/id/<int:id>', methods=['GET'])
-def charada(id):
-    for charada in charadas:
-        if charada['id'] == id:
-            return jsonify(charada),200
+    lista = db.collection('charadas').stream()
+
+    for item in lista:
+        charadas.append(item.to_dict())
+
+    if charadas:
+        return jsonify(random.choice(charadas)),200
     else:
-        return jsonify({'mensagem':'ERRO! Usuário não encontrado'}), 404
+        return jsonify({'mensagem':'ERRO! Nenhuma charada cadastrada'}), 404
+
+@app.route('/charadas/<id>', methods=['GET'])
+def charadaId(id):
+    doc_ref=db.collection('charadas').document(id)
+    doc=doc_ref.get().to_dict()
+
+    if doc:
+        return jsonify(doc)
+    else:
+        return jsonify({'mensagem':'ERRO! Nenhuma charada encontrado'}), 404
+    
+@app.route('/charadas', methods=['POST'])
+def charadaPost():
+    dados = request.json
+
+    if 'charada' not in dados or 'resposta' not in dados:
+        return jsonify({'mensagem':'ERRO! Campos charada e resposta são obrigatórios'}), 400
+    
+    contador_ref = db.collection('controle_id').document('contador')
+    contador_doc = contador_ref.get().to_dict()
+    ultimo_id= contador_doc.get('id')
+    novo_id = int(ultimo_id) + 1
+    contador_ref.update({'id':novo_id})#atualiza a coleção de id
+
+    db.collection('charadas').document(str(novo_id)).set({
+        'id':novo_id,
+        'charada': dados['charada'],
+        'resposta': dados['resposta']
+})
+    return jsonify({'mensagem':'Charada cadastrada com sucesso!'}),201
 
 
+@app.route('/charadas/<id>', methods=['PUT'])
+def charadaPut(id):
+    dados= request.json
 
+    if 'charada' not in dados or 'resposta' not in dados:
+        return jsonify({'mensagem':'ERRO! Campos charada e resposta são obrigatórios'}), 400
 
+    doc_ref = db.collection('charadas').document(id)
+    doc = doc_ref.get()
+
+    if doc.exists:
+        doc_ref.update({
+        'charada': dados['charada'],
+        'resposta': dados['resposta']
+
+        })
+        return jsonify({'mensagem':'Charada atualizada com sucesso!'}),201
+        
+    else:
+        return jsonify({'mensagem':'ERRO! Charada não encontrada!'}), 404
+    
+
+@app.route('/charadas/<id>',methods=['DELETE'])
+def charadaDELETE(id):
+    doc_ref = db.collection('charadas').document(id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        return jsonify({'mensagem':'ERRO! Charada não encontrada!'}), 404
+    doc_ref.delete()
+    return jsonify({'mensagem':'Charada excluída com sucesso!'}), 200
 if __name__ == '__main__':
     app.run()
