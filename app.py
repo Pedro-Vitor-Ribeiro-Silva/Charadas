@@ -25,6 +25,20 @@ def index():
 
 
 # metodo GET
+@app.route('/charadas/lista', methods=['GET'])
+def charadaRandom():
+    charadas= []
+
+    lista = db.collection('charadas').stream()
+
+    for item in lista:
+        charadas.append(item.to_dict())
+
+    if charadas:
+        return jsonify(charadas),200
+    else:
+        return jsonify({'mensagem':'ERRO! Nenhuma charada cadastrada'}), 404
+    
 @app.route('/charadas', methods=['GET'])
 def charadaRandom():
     charadas= []
