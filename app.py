@@ -26,7 +26,7 @@ def index():
 
 # metodo GET
 @app.route('/charadas/lista', methods=['GET'])
-def charadaRandom():
+def charadaLista():
     charadas= []
 
     lista = db.collection('charadas').stream()
